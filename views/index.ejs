@@ -6,24 +6,34 @@
 </head>
 <body>
     <h1>Artikel Kesehatan orang jawa</h1>
-    <form action="/search">
-        <input name="query" placeholder="Cari artikel">
-        <select name="category">
-            <option value="">Semua Kategori</option>
-            <% categories.forEach(cat => { %>
-                <option value="<%= cat.id %>"><%= cat.name %></option>
-            <% }) %>
-        </select>
-        <button>Cari</button>
-    </form>
+
+    <!-- Form Pencarian -->
+    <div class="search-container">
+        <form action="/search">
+            <input name="query" placeholder="Cari artikel">
+            <select name="category">
+                <option value="">Semua Kategori</option>
+                <% categories.forEach(cat => { %>
+                    <option value="<%= cat.id %>"><%= cat.name %></option>
+                <% }) %>
+            </select>
+            <button>Cari</button>
+        </form>
+    </div>
+
+    <!-- Daftar Artikel -->
     <ul>
         <% articles.forEach(art => { %>
-            <li><a href="/article/<%= art.id %>"><%= art.title %></a> - Kategori: <%= art.category || 'Umum' %></li>
+            <li>
+                <a href="/article/<%= art.id %>"><%= art.title %></a> 
+                - Kategori: <%= art.category || 'Umum' %>
+            </li>
         <% }) %>
     </ul>
+
     <!-- Chatbot Bubble -->
     <div id="chat-bubble">Chat AI</div>
-    <div id="chat-window" style="display:none;">
+    <div id="chat-window">
         <div id="chat-messages"></div>
         <input id="chat-input" placeholder="Tanya tentang kesehatan">
         <button onclick="sendChat()">Kirim</button>

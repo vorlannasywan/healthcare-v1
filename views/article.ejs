@@ -1,18 +1,29 @@
 <!DOCTYPE html>
 <html>
-<head><title><%= article.title %></title></head>
+<head>
+    <title><%= article.title %></title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
 <body>
-    <h1><%= article.title %></h1>
-    <% if (article.image_url) { %><img src="<%= article.image_url %>" alt="Ilustrasi"><% } %>
-    <p><%= article.content %></p>
-    <p>Referensi: <%= article.article_references %></p> <!-- Ubah dari references ke article_references -->
-    <button onclick="addFavorite('<%= article.id %>')">Tambah Favorit</button>
+    <div class="article-container">
+        <h1><%= article.title %></h1>
+        <% if (article.image_url) { %>
+            <img src="<%= article.image_url %>" alt="Ilustrasi">
+        <% } %>
+        <p><%= article.content %></p>
+        <p class="references">Referensi: <%= article.article_references %></p>
+        <button onclick="addFavorite('<%= article.id %>')">Tambah Favorit</button>
+    </div>
+
     <script>
         function addFavorite(id) {
-            fetch(`/favorite/${id}`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.token } })
-                .then(res => res.json())
-                .then(data => alert(data.message || 'Ditambahkan'))
-                .catch(err => console.error('Error:', err));
+            fetch(`/favorite/${id}`, { 
+                method: 'POST', 
+                headers: { 'Authorization': 'Bearer ' + localStorage.token } 
+            })
+            .then(res => res.json())
+            .then(data => alert(data.message || 'Ditambahkan'))
+            .catch(err => console.error('Error:', err));
         }
     </script>
 </body>
