@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head><title>Admin Dashboard</title></head>
+<body>
+    <h1>Statistik</h1>
+    <h2>Artikel Populer</h2>
+    <ul>
+        <% popularArticles.forEach(art => { %>
+            <li><%= art.title %> - Views: <%= art.view_count %></li>
+        <% }) %>
+    </ul>
+    <h2>Pertanyaan Populer</h2>
+    <ul>
+        <% popularQuestions.forEach(q => { %>
+            <li><%= q.message %> - Frekuensi: <%= q.count %></li>
+        <% }) %>
+    </ul>
+    <a href="/admin/articles">Kelola Artikel</a>
+    <!-- Form tambah kategori -->
+    <form action="/admin/category" method="POST">
+        <input name="name" placeholder="Nama Kategori">
+        <textarea name="description" placeholder="Deskripsi"></textarea>
+        <button>Tambah Kategori</button>
+    </form>
+    <ul>
+        <% categories.forEach(cat => { %>
+            <li><%= cat.name %> <form action="/admin/category/<%= cat.id %>/delete" method="POST"><button>Hapus</button></form></li>
+        <% }) %>
+    </ul>
+</body>
+</html>

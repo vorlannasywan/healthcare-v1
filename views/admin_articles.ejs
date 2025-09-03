@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head><title>Kelola Artikel</title></head>
+<body>
+    <h1>Kelola Artikel</h1>
+    <!-- Form Tambah Artikel -->
+    <form action="/admin/article" method="POST" enctype="multipart/form-data">
+        <input name="title" placeholder="Judul">
+        <textarea name="content" placeholder="Isi"></textarea>
+        <select name="category_id">
+            <% categories.forEach(cat => { %>
+                <option value="<%= cat.id %>"><%= cat.name %></option>
+            <% }) %>
+        </select>
+        <input type="file" name="image">
+        <textarea name="article_references" placeholder="Referensi"></textarea> <!-- Ubah dari references ke article_references -->
+        <button>Tambah</button>
+    </form>
+    <ul>
+        <% articles.forEach(art => { %>
+            <li><%= art.title %> - Kategori: <%= art.category %>
+                <form action="/admin/article/<%= art.id %>/update" method="POST" enctype="multipart/form-data">
+                    <input name="title" value="<%= art.title %>">
+                    <textarea name="content"><%= art.content %></textarea>
+                    <select name="category_id">
+                        <option value="<%= art.category_id %>"><%= art.category %></option>
+                        <% categories.forEach(cat => { if (cat.id != art.category_id) { %>
+                            <option value="<%= cat.id %>"><%= cat.name %></option>
+                        <% } }) %>
+                    </select>
+                    <input type="file" name="image">
+                    <textarea name="article_references"><%= art.article_references %></textarea> <!-- Ubah dari references ke article_references -->
+                    <button>Update</button>
+                </form>
+                <form action="/admin/article/<%= art.id %>/delete" method="POST"><button>Hapus</button></form>
+            </li>
+        <% }) %>
+    </ul>
+</body>
+</html>

@@ -1,0 +1,12 @@
+#chat-bubble { position: fixed; bottom: 20px; right: 20px; background: blue; color: white; padding: 10px; cursor: pointer; }
+#chat-window { position: fixed; bottom: 60px; right: 20px; background: white; border: 1px solid; padding: 10px; }
+#admin-login-form {
+    max-width: 300px;
+    margin: 50px auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+#admin-login-form input, #admin-login-form button {
+    padding: 10px;
+}
