@@ -1,31 +1,88 @@
 <!DOCTYPE html>
 <html>
-<head><title>Admin Dashboard</title></head>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
 <body>
     <h1>Statistik</h1>
+
     <h2>Artikel Populer</h2>
     <ul>
         <% popularArticles.forEach(art => { %>
             <li><%= art.title %> - Views: <%= art.view_count %></li>
         <% }) %>
     </ul>
+
     <h2>Pertanyaan Populer</h2>
     <ul>
         <% popularQuestions.forEach(q => { %>
             <li><%= q.message %> - Frekuensi: <%= q.count %></li>
         <% }) %>
     </ul>
+
     <a href="/admin/articles">Kelola Artikel</a>
+
     <!-- Form tambah kategori -->
-    <form action="/admin/category" method="POST">
-        <input name="name" placeholder="Nama Kategori">
+    <form id="add-category-form">
+        <input name="name" placeholder="Nama Kategori" required>
         <textarea name="description" placeholder="Deskripsi"></textarea>
-        <button>Tambah Kategori</button>
+        <button type="submit">Tambah Kategori</button>
     </form>
+    <p id="error" style="color: red;"></p>
+
     <ul>
         <% categories.forEach(cat => { %>
-            <li><%= cat.name %> <form action="/admin/category/<%= cat.id %>/delete" method="POST"><button>Hapus</button></form></li>
+            <li>
+                <%= cat.name %> 
+                <form class="delete-category-form" data-id="<%= cat.id %>">
+                    <button type="submit">Hapus</button>
+                </form>
+            </li>
         <% }) %>
     </ul>
+
+    <script>
+        // Kirim form tambah kategori (cookie otomatis ikut)
+        document.getElementById('add-category-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const name = e.target.querySelector('input[name="name"]').value;
+            const description = e.target.querySelector('textarea[name="description"]').value;
+            try {
+                const res = await fetch('/admin/category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description })
+                });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    const errorData = await res.json();
+                    document.getElementById('error').textContent = errorData.message || 'Gagal menambah kategori';
+                }
+            } catch (err) {
+                document.getElementById('error').textContent = 'Error koneksi: ' + err.message;
+            }
+        };
+
+        // Kirim form hapus kategori
+        document.querySelectorAll('.delete-category-form').forEach(form => {
+            form.onsubmit = async (e) => {
+                e.preventDefault();
+                const id = form.getAttribute('data-id');
+                try {
+                    const res = await fetch(`/admin/category/${id}/delete`, { method: 'POST' });
+                    if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        const errorData = await res.json();
+                        document.getElementById('error').textContent = errorData.message || 'Gagal menghapus kategori';
+                    }
+                } catch (err) {
+                    document.getElementById('error').textContent = 'Error koneksi: ' + err.message;
+                }
+            };
+        });
+    </script>
 </body>
 </html>

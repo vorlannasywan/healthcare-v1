@@ -13,31 +13,27 @@
     </form>
     <p id="error" style="color: red;"></p>
     <script>
-document.getElementById('admin-login-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-
-    try {
-        const res = await fetch('/admin/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-
-        if (res.ok && data.success) {
-            // Redirect biasa, token sudah di cookie
-            window.location.href = '/admin/dashboard';
-        } else {
-            document.getElementById('error').textContent = data.message || 'Login gagal';
-        }
-    } catch (err) {
-        console.error('Fetch error:', err);
-        document.getElementById('error').textContent = 'Error koneksi';
-    }
-};
-
+        document.getElementById('admin-login-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            try {
+                const res = await fetch('/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('token', data.token);
+                    window.location.href = '/admin/dashboard';
+                } else {
+                    document.getElementById('error').textContent = data.message || 'Login gagal';
+                }
+            } catch (err) {
+                document.getElementById('error').textContent = 'Error koneksi';
+            }
+        };
     </script>
 </body>
 </html>

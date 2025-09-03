@@ -6,7 +6,6 @@ const multer = require('multer');
 const dotenv = require('dotenv');
 const { OpenAI } = require('openai');
 const path = require('path');
-const cookieParser = require('cookie-parser');
 
 dotenv.config();
 
@@ -16,8 +15,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static('public'));
 
-app.use(cookieParser());
-
 // Koneksi Database
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
@@ -25,6 +22,9 @@ const db = mysql.createConnection({
     password: process.env.DB_PASS,
     database: process.env.DB_NAME
 });
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
+
 
 db.connect(err => {
     if (err) {
@@ -43,29 +43,20 @@ const upload = multer({ storage });
 
 // Middleware Auth JWT
 const authMiddleware = (req, res, next) => {
-    let token = req.headers.authorization?.split(' ')[1];
-    if (!token && req.cookies?.token) {
-        token = req.cookies.token; // ✅ ambil dari cookie
-    }
-    if (!token) {
-        return res.status(401).json({ message: 'Unauthorized' });
-    }
+    const token = req.headers.authorization?.split(' ')[1] || req.cookies.token;
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({ message: 'Forbidden' });
-        }
+        if (err) return res.status(403).json({ message: 'Forbidden' });
         req.user = user;
         next();
     });
 };
 
+
 // Middleware Admin Only
 const adminMiddleware = (req, res, next) => {
-    console.log('Admin Middleware - User role:', req.user.role);
-    if (req.user.role !== 'admin') {
-        console.log('Admin Middleware - Access denied, not admin');
-        return res.status(403).json({ message: 'Admin only' });
-    }
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
     next();
 };
 
@@ -77,7 +68,6 @@ const client = new OpenAI({
 
 // Route untuk halaman login admin
 app.get('/admin/login', (req, res) => {
-    res.clearCookie('token'); // Bersihkan cookie token saat mengakses halaman login
     res.render('admin_login');
 });
 
@@ -184,17 +174,31 @@ app.post('/admin/login', (req, res) => {
     if (!email || !password) {
         return res.status(400).json({ message: 'Email dan password diperlukan' });
     }
-
+    
     db.query('SELECT * FROM users WHERE email = ? AND role = "admin"', [email], (err, results) => {
-        if (err) return res.status(500).json({ message: 'Server error' });
-        if (results.length === 0) return res.status(401).json({ message: 'Invalid admin credentials' });
-
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ message: 'Server error' });
+        }
+        if (results.length === 0) {
+            return res.status(401).json({ message: 'Invalid admin credentials' });
+        }
+        
         const admin = results[0];
-        if (admin.password !== password) return res.status(401).json({ message: 'Invalid credentials' });
+        if (admin.password !== password) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+        
+        const token = jwt.sign({ id: admin.id, role: admin.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-        const token = jwt.sign({ id: admin.id, role: admin.role }, process.env.JWT_SECRET);
-        res.cookie('token', token, { httpOnly: true });
-        res.json({ token });
+        // Simpan token di cookie HttpOnly
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: false, // ubah ke true jika pakai HTTPS
+            maxAge: 3600000 // 1 jam
+        });
+
+        res.json({ success: true });
     });
 });
 
@@ -227,49 +231,57 @@ app.post('/favorite/:articleId', authMiddleware, (req, res) => {
     });
 });
 
-// Chatbot API dengan RAG (Tanpa Autentikasi)
-app.post('/chat', async (req, res) => {
+// Chatbot API
+app.post('/chat', authMiddleware, async (req, res) => {
     const { message } = req.body;
-    if (!message) return res.status(400).json({ message: 'Message required' });
-    
+    if (!message) {
+        return res.status(400).json({ message: 'Message required' });
+    }
+
     try {
-        db.query('SELECT title, content, article_references FROM articles WHERE content LIKE ? OR title LIKE ? LIMIT 3', 
-            [`%${message}%`, `%${message}%`], async (err, articles) => {
-            if (err) {
-                console.error('Error searching articles for RAG:', err);
-                return res.status(500).json({ message: 'Server error' });
+        db.query(
+            'SELECT * FROM articles WHERE content LIKE ? OR title LIKE ?',
+            [`%${message}%`, `%${message}%`],
+            async (err, articles) => {
+                if (err) {
+                    console.error('Error searching articles:', err);
+                    return res.status(500).json({ message: 'Server error' });
+                }
+
+                let prompt = message;
+                if (articles.length > 0) {
+                    prompt += `\nArahkan ke artikel terkait: ${articles[0].title} di /article/${articles[0].id}`;
+                }
+
+                const responseAI = await client.chat.completions.create({
+                    model: "openai/gpt-oss-120b:fireworks-ai",
+                    messages: [{ role: "user", content: prompt }],
+                });
+
+                const aiReply = responseAI.choices[0].message.content;
+
+                if (req.user) {
+                    db.query(
+                        'INSERT INTO chat_history (user_id, message, response) VALUES (?, ?, ?)',
+                        [req.user.id, message, aiReply],
+                        (err) => {
+                            if (err) console.error('Error saving chat history:', err);
+                        }
+                    );
+                }
+
+                res.json({ reply: aiReply });
             }
-
-            if (articles.length === 0) {
-                const aiReply = 'Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan.';
-                return res.json({ reply: aiReply });
-            }
-
-            let context = '';
-            articles.forEach((art) => {
-                context += `Artikel: ${art.title}\nIsi: ${art.content}\nReferensi: ${art.article_references}\n\n`;
-            });
-
-            const prompt = `Anda adalah chatbot spesialis kesehatan. Jawab pertanyaan berikut hanya berdasarkan konteks kesehatan yang diberikan. Jika pertanyaan di luar kesehatan atau tidak relevan dengan konteks, jawab: "Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan." Konteks: \n${context}\nPertanyaan: ${message}`;
-
-            const responseAI = await client.chat.completions.create({
-                model: "openai/gpt-oss-120b:fireworks-ai",
-                messages: [{ role: "user", content: prompt }],
-            });
-
-            const aiReply = responseAI.choices[0].message.content;
-
-            res.json({ reply: aiReply });
-        });
+        );
     } catch (err) {
         console.error('AI Error:', err);
         res.status(500).json({ message: 'AI Error' });
     }
 });
 
+
 // Dashboard Admin
 app.get('/admin/dashboard', authMiddleware, adminMiddleware, (req, res) => {
-    console.log('Rendering admin dashboard for user:', req.user);
     db.query('SELECT * FROM articles ORDER BY view_count DESC LIMIT 5', (err, popularArticles) => {
         if (err) {
             console.error('Error fetching popular articles:', err);
@@ -353,7 +365,6 @@ app.post('/admin/article/:id/delete', authMiddleware, adminMiddleware, (req, res
 // CRUD Kategori
 app.post('/admin/category', authMiddleware, adminMiddleware, (req, res) => {
     const { name, description } = req.body;
-    console.log('Add category request:', { name, description });
     db.query('INSERT INTO categories (name, description) VALUES (?, ?)', [name, description], (err) => {
         if (err) {
             console.error('Error adding category:', err);
@@ -364,9 +375,7 @@ app.post('/admin/category', authMiddleware, adminMiddleware, (req, res) => {
 });
 
 app.post('/admin/category/:id/delete', authMiddleware, adminMiddleware, (req, res) => {
-    const categoryId = req.params.id;
-    console.log('Delete category request for ID:', categoryId);
-    db.query('DELETE FROM categories WHERE id=?', [categoryId], (err) => {
+    db.query('DELETE FROM categories WHERE id=?', [req.params.id], (err) => {
         if (err) {
             console.error('Error deleting category:', err);
             return res.status(500).json({ message: 'Server error' });
