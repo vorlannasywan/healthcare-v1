@@ -1,88 +1,127 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-    <title>Admin Dashboard</title>
-    <link rel="stylesheet" href="/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Admin - Healthcare</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body>
-    <h1>Statistik</h1>
+<body class="bg-gray-100 font-sans">
+  <!-- Header -->
+  <header class="bg-blue-600 text-white p-4 shadow-md">
+    <div class="container mx-auto flex justify-between items-center">
+      <h1 class="text-2xl font-bold">Healthcare</h1>
+      <nav>
+        <a href="/admin/dashboard" class="px-3 hover:underline">Dashboard</a>
+        <a href="/admin/articles" class="px-3 hover:underline">Kelola Artikel</a>
+        <a href="/logout" class="px-3 hover:underline">Logout</a>
+      </nav>
+    </div>
+  </header>
 
-    <h2>Artikel Populer</h2>
-    <ul>
-        <% popularArticles.forEach(art => { %>
-            <li><%= art.title %> - Views: <%= art.view_count %></li>
-        <% }) %>
-    </ul>
+  <!-- Main Content with Sidebar -->
+  <div class="container mx-auto flex my-6 gap-6">
+    <!-- Sidebar -->
+    <aside class="w-1/4 bg-white p-4 rounded-lg shadow-md">
+      <h2 class="text-lg font-semibold mb-4">Navigasi</h2>
+      <ul>
+        <li class="mb-2"><a href="/admin/dashboard" class="text-blue-600 hover:underline">Statistik</a></li>
+        <li class="mb-2"><a href="/admin/articles" class="text-blue-600 hover:underline">Kelola Artikel</a></li>
+      </ul>
+    </aside>
 
-    <h2>Pertanyaan Populer</h2>
-    <ul>
-        <% popularQuestions.forEach(q => { %>
-            <li><%= q.message %> - Frekuensi: <%= q.count %></li>
-        <% }) %>
-    </ul>
+    <!-- Main Content -->
+    <main class="w-3/4">
+      <h2 class="text-2xl font-bold mb-4">Statistik</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div class="bg-white p-4 rounded-lg shadow-md">
+          <h3 class="text-lg font-semibold">Artikel Populer</h3>
+          <% popularArticles.forEach(art => { %>
+            <div class="border-b py-2">
+              <p><%= art.title %> - Views: <%= art.view_count %></p>
+            </div>
+          <% }) %>
+        </div>
+        <div class="bg-white p-4 rounded-lg shadow-md">
+          <h3 class="text-lg font-semibold">Pertanyaan Populer</h3>
+          <% popularQuestions.forEach(q => { %>
+            <div class="border-b py-2">
+              <p><%= q.message %> - Frekuensi: <%= q.count %></p>
+            </div>
+          <% }) %>
+        </div>
+      </div>
 
-    <a href="/admin/articles">Kelola Artikel</a>
+      <h2 class="text-2xl font-bold mb-4">Kelola Kategori</h2>
+      <!-- Form Tambah Kategori -->
+      <form id="add-category-form" class="grid gap-4 mb-4 bg-white p-4 rounded-lg shadow-md">
+        <input name="name" placeholder="Nama Kategori" required class="p-2 border rounded-lg">
+        <textarea name="description" placeholder="Deskripsi" rows="3" class="p-2 border rounded-lg"></textarea>
+        <button type="submit" class="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700">Tambah Kategori</button>
+      </form>
+      <p id="error" class="text-red-600 mb-4"></p>
 
-    <!-- Form tambah kategori -->
-    <form id="add-category-form">
-        <input name="name" placeholder="Nama Kategori" required>
-        <textarea name="description" placeholder="Deskripsi"></textarea>
-        <button type="submit">Tambah Kategori</button>
-    </form>
-    <p id="error" style="color: red;"></p>
-
-    <ul>
+      <!-- Daftar Kategori -->
+      <div class="bg-white p-4 rounded-lg shadow-md">
         <% categories.forEach(cat => { %>
-            <li>
-                <%= cat.name %> 
-                <form class="delete-category-form" data-id="<%= cat.id %>">
-                    <button type="submit">Hapus</button>
-                </form>
-            </li>
+          <div class="border-b py-2 flex justify-between items-center">
+            <p><%= cat.name %></p>
+            <form class="delete-category-form" data-id="<%= cat.id %>">
+              <button type="submit" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700">Hapus</button>
+            </form>
+          </div>
         <% }) %>
-    </ul>
+      </div>
+    </main>
+  </div>
 
-    <script>
-        // Kirim form tambah kategori (cookie otomatis ikut)
-        document.getElementById('add-category-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const name = e.target.querySelector('input[name="name"]').value;
-            const description = e.target.querySelector('textarea[name="description"]').value;
-            try {
-                const res = await fetch('/admin/category', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, description })
-                });
-                if (res.ok) {
-                    window.location.reload();
-                } else {
-                    const errorData = await res.json();
-                    document.getElementById('error').textContent = errorData.message || 'Gagal menambah kategori';
-                }
-            } catch (err) {
-                document.getElementById('error').textContent = 'Error koneksi: ' + err.message;
-            }
-        };
+  <!-- Footer -->
+  <footer class="bg-blue-600 text-white p-4 text-center">
+    <p>&copy; 2025 Healthcare @itenas. All rights reserved.</p>
+  </footer>
 
-        // Kirim form hapus kategori
-        document.querySelectorAll('.delete-category-form').forEach(form => {
-            form.onsubmit = async (e) => {
-                e.preventDefault();
-                const id = form.getAttribute('data-id');
-                try {
-                    const res = await fetch(`/admin/category/${id}/delete`, { method: 'POST' });
-                    if (res.ok) {
-                        window.location.reload();
-                    } else {
-                        const errorData = await res.json();
-                        document.getElementById('error').textContent = errorData.message || 'Gagal menghapus kategori';
-                    }
-                } catch (err) {
-                    document.getElementById('error').textContent = 'Error koneksi: ' + err.message;
-                }
-            };
+  <!-- Script -->
+  <script>
+    // Tambah kategori
+    document.getElementById('add-category-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const name = e.target.querySelector('input[name="name"]').value;
+      const description = e.target.querySelector('textarea[name="description"]').value;
+      try {
+        const res = await fetch('/admin/category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description })
         });
-    </script>
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          const errorData = await res.json();
+          document.getElementById('error').textContent = errorData.message || 'Gagal menambah kategori';
+        }
+      } catch (err) {
+        document.getElementById('error').textContent = 'Error koneksi: ' + err.message;
+      }
+    };
+
+    // Hapus kategori
+    document.querySelectorAll('.delete-category-form').forEach(form => {
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const id = form.getAttribute('data-id');
+        try {
+          const res = await fetch(`/admin/category/${id}/delete`, { method: 'POST' });
+          if (res.ok) {
+            window.location.reload();
+          } else {
+            const errorData = await res.json();
+            document.getElementById('error').textContent = errorData.message || 'Gagal menghapus kategori';
+          }
+        } catch (err) {
+          document.getElementById('error').textContent = 'Error koneksi: ' + err.message;
+        }
+      };
+    });
+  </script>
 </body>
 </html>

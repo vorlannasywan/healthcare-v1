@@ -12,10 +12,10 @@ dotenv.config();
 
 const app = express();
 app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views')); // Ensure views directory is set
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static('public'));
-
 app.use(cookieParser());
 
 // Koneksi Database
@@ -45,7 +45,7 @@ const upload = multer({ storage });
 const authMiddleware = (req, res, next) => {
     let token = req.headers.authorization?.split(' ')[1];
     if (!token && req.cookies?.token) {
-        token = req.cookies.token; // ✅ ambil dari cookie
+        token = req.cookies.token;
     }
     if (!token) {
         return res.status(401).json({ message: 'Unauthorized' });
@@ -77,8 +77,24 @@ const client = new OpenAI({
 
 // Route untuk halaman login admin
 app.get('/admin/login', (req, res) => {
-    res.clearCookie('token'); // Bersihkan cookie token saat mengakses halaman login
+    res.clearCookie('token');
     res.render('admin_login');
+});
+
+// Route untuk halaman chatbot
+app.get('/chatbot', (req, res) => {
+    db.query('SELECT * FROM categories', (err, categories) => {
+        if (err) {
+            console.error('Error fetching categories for chatbot:', err);
+            return res.status(500).json({ message: 'Server error' });
+        }
+        try {
+            res.render('chatbot', { categories });
+        } catch (err) {
+            console.error('Error rendering chatbot.ejs:', err);
+            res.status(500).json({ message: 'Error rendering chatbot page' });
+        }
+    });
 });
 
 // Routes Utama
@@ -127,7 +143,13 @@ app.get('/article/:id', (req, res) => {
             console.error('Error fetching article:', err);
             return res.status(500).json({ message: 'Server error' });
         }
-        res.render('article', { article });
+        db.query('SELECT * FROM categories', (err, categories) => {
+            if (err) {
+                console.error('Error fetching categories:', err);
+                return res.status(500).json({ message: 'Server error' });
+            }
+            res.render('article', { article, categories });
+        });
     });
 });
 
@@ -198,10 +220,9 @@ app.post('/admin/login', (req, res) => {
     });
 });
 
-
 // Dashboard User
-app.get('/user/dashboard', authMiddleware, (req, res) => {
-    db.query('SELECT * FROM chat_history WHERE user_id = ? ORDER BY created_at DESC', [req.user.id], (err, chats) => {
+app.get('/dashboard', authMiddleware, (req, res) => {
+    db.query('SELECT * FROM chat_history WHERE user_id = 1 ORDER BY created_at DESC', [req.user.id], (err, chats) => {
         if (err) {
             console.error('Error fetching chat history:', err);
             return res.status(500).json({ message: 'Server error' });
@@ -227,45 +248,70 @@ app.post('/favorite/:articleId', authMiddleware, (req, res) => {
     });
 });
 
-// Chatbot API dengan RAG (Tanpa Autentikasi)
-app.post('/chat', async (req, res) => {
+// POST /chat → kirim pertanyaan & simpan ke chat_history
+// POST /chat → kirim pertanyaan & simpan ke chat_history
+app.post('/chat', (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ message: 'Message required' });
-    
+
     try {
-        db.query('SELECT title, content, article_references FROM articles WHERE content LIKE ? OR title LIKE ? LIMIT 3', 
-            [`%${message}%`, `%${message}%`], async (err, articles) => {
-            if (err) {
-                console.error('Error searching articles for RAG:', err);
-                return res.status(500).json({ message: 'Server error' });
+        db.query(
+            'SELECT title, content, article_references FROM articles WHERE content LIKE ? OR title LIKE ? LIMIT 3',
+            [`%${message}%`, `%${message}%`],
+            async (err, articles) => {
+                if (err) {
+                    console.error('Error searching articles for RAG:', err);
+                    return res.status(500).json({ message: 'Server error' });
+                }
+
+                if (articles.length === 0) {
+                    const aiReply = 'Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan.';
+                    db.query(
+                        'INSERT INTO chat_history (message, reply, created_at) VALUES (?, ?, NOW())',
+                        [message, aiReply],
+                        (err) => {
+                            if (err) console.error('Error saving chat history:', err);
+                        }
+                    );
+                    return res.json({ reply: aiReply });
+                }
+
+                let context = '';
+                articles.forEach((art) => {
+                    context += `Artikel: ${art.title}\nIsi: ${art.content}\nReferensi: ${art.article_references}\n\n`;
+                });
+
+                const prompt = `Anda adalah chatbot spesialis kesehatan. Jawab pertanyaan berikut hanya berdasarkan konteks kesehatan yang diberikan. Jika pertanyaan di luar kesehatan atau tidak relevan dengan konteks, jawab: "Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan." Konteks: \n${context}\nPertanyaan: ${message}`;
+
+                try {
+                    const responseAI = await client.chat.completions.create({
+                        model: "openai/gpt-oss-120b:fireworks-ai",
+                        messages: [{ role: "user", content: prompt }],
+                    });
+
+                    const aiReply = responseAI.choices[0].message.content;
+
+                    db.query(
+                        'INSERT INTO chat_history (message, reply, created_at) VALUES (?, ?, NOW())',
+                        [message, aiReply],
+                        (err) => {
+                            if (err) console.error('Error saving chat history:', err);
+                        }
+                    );
+
+                    res.json({ reply: aiReply });
+                } catch (err) {
+                    console.error('AI Error:', err);
+                    res.status(500).json({ message: 'AI Error' });
+                }
             }
-
-            if (articles.length === 0) {
-                const aiReply = 'Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan.';
-                return res.json({ reply: aiReply });
-            }
-
-            let context = '';
-            articles.forEach((art) => {
-                context += `Artikel: ${art.title}\nIsi: ${art.content}\nReferensi: ${art.article_references}\n\n`;
-            });
-
-            const prompt = `Anda adalah chatbot spesialis kesehatan. Jawab pertanyaan berikut hanya berdasarkan konteks kesehatan yang diberikan. Jika pertanyaan di luar kesehatan atau tidak relevan dengan konteks, jawab: "Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan." Konteks: \n${context}\nPertanyaan: ${message}`;
-
-            const responseAI = await client.chat.completions.create({
-                model: "openai/gpt-oss-120b:fireworks-ai",
-                messages: [{ role: "user", content: prompt }],
-            });
-
-            const aiReply = responseAI.choices[0].message.content;
-
-            res.json({ reply: aiReply });
-        });
+        );
     } catch (err) {
-        console.error('AI Error:', err);
-        res.status(500).json({ message: 'AI Error' });
+        console.error('Server Error:', err);
+        res.status(500).json({ message: 'Server error' });
     }
 });
+
 
 // Dashboard Admin
 app.get('/admin/dashboard', authMiddleware, adminMiddleware, (req, res) => {
@@ -275,21 +321,28 @@ app.get('/admin/dashboard', authMiddleware, adminMiddleware, (req, res) => {
             console.error('Error fetching popular articles:', err);
             return res.status(500).json({ message: 'Server error' });
         }
-        db.query('SELECT message, COUNT(*) as count FROM chat_history GROUP BY message ORDER BY count DESC LIMIT 5', (err, popularQuestions) => {
-            if (err) {
-                console.error('Error fetching popular questions:', err);
-                return res.status(500).json({ message: 'Server error' });
-            }
-            db.query('SELECT * FROM categories', (err, categories) => {
+
+        // ✅ Hanya ambil pertanyaan dari user
+        db.query(
+            'SELECT message, COUNT(*) as count FROM chat_history WHERE sender = "user" GROUP BY message ORDER BY count DESC LIMIT 5',
+            (err, popularQuestions) => {
                 if (err) {
-                    console.error('Error fetching categories:', err);
+                    console.error('Error fetching popular questions:', err);
                     return res.status(500).json({ message: 'Server error' });
                 }
-                res.render('admin_dashboard', { popularArticles, popularQuestions, categories });
-            });
-        });
+
+                db.query('SELECT * FROM categories', (err, categories) => {
+                    if (err) {
+                        console.error('Error fetching categories:', err);
+                        return res.status(500).json({ message: 'Server error' });
+                    }
+                    res.render('admin_dashboard', { popularArticles, popularQuestions, categories });
+                });
+            }
+        );
     });
 });
+
 
 // CRUD Artikel
 app.get('/admin/articles', authMiddleware, adminMiddleware, (req, res) => {
@@ -305,6 +358,16 @@ app.get('/admin/articles', authMiddleware, adminMiddleware, (req, res) => {
             }
             res.render('admin_articles', { articles, categories });
         });
+    });
+});
+
+app.get('/admin/articles/add', authMiddleware, adminMiddleware, (req, res) => {
+    db.query('SELECT * FROM categories', (err, categories) => {
+        if (err) {
+            console.error('Error fetching categories:', err);
+            return res.status(500).json({ message: 'Server error' });
+        }
+        res.render('admin_article_add', { categories });
     });
 });
 

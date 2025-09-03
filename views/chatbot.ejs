@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot - Healthcare</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 font-sans">
+    <!-- Header -->
+    <header class="bg-blue-600 text-white p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">Healthcare</h1>
+            <nav>
+                <a href="/dashboard" class="px-3 hover:underline">Dashboard</a>
+                <a href="/chatbot" class="px-3 hover:underline">Chatbot</a>
+                <a href="/" class="px-3 hover:underline">Beranda</a>
+                <a href="/logout" class="px-3 hover:underline">Logout</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content with Sidebar -->
+    <div class="container mx-auto flex my-6">
+        <!-- Sidebar -->
+        <aside class="w-1/4 bg-white p-4 rounded-lg shadow-md mr-6">
+            <h2 class="text-lg font-semibold mb-4">Kategori Artikel</h2>
+            <ul>
+                <% categories.forEach(category => { %>
+                    <li class="mb-2">
+                        <a href="/category/<%= category.id %>" class="text-blue-600 hover:underline"><%= category.name %></a>
+                    </li>
+                <% }) %>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="w-3/4">
+            <h2 class="text-2xl font-bold mb-4">Chatbot Kesehatan</h2>
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <div id="chat-container" class="h-96 overflow-y-auto mb-4 p-4 border border-gray-200 rounded-lg">
+                    <!-- Chat messages will be populated dynamically -->
+                </div>
+                <form id="chat-form" class="flex items-center gap-2">
+                    <input 
+                        type="text" 
+                        id="chat-input" 
+                        placeholder="Ketik pertanyaan Anda..." 
+                        class="flex-1 p-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 transition-all duration-200"
+                        required
+                    >
+                    <button 
+                        type="submit" 
+                        class="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                        title="Kirim"
+                    >
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-blue-600 text-white p-4 text-center">
+        <p>&copy; 2025 Healthcare @itenas. All rights reserved.</p>
+    </footer>
+
+    <script>
+        document.getElementById('chat-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const chatInput = document.getElementById('chat-input');
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Add user message to chat container
+            const chatContainer = document.getElementById('chat-container');
+            const userMessageDiv = document.createElement('div');
+            userMessageDiv.className = 'mb-2 text-right';
+            userMessageDiv.innerHTML = `<p class="inline-block bg-blue-100 p-2 rounded-lg">You: ${message}</p>`;
+            chatContainer.appendChild(userMessageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Clear input
+            chatInput.value = '';
+
+            try {
+                // Send message to /chat endpoint
+                const token = localStorage.getItem('token');
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` // Include token if required
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    // Add AI response to chat container
+                    const aiMessageDiv = document.createElement('div');
+                    aiMessageDiv.className = 'mb-2 text-left';
+                    aiMessageDiv.innerHTML = `<p class="inline-block bg-gray-200 p-2 rounded-lg">Bot: ${data.reply}</p>`;
+                    chatContainer.appendChild(aiMessageDiv);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                } else {
+                    // Display error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'mb-2 text-left text-red-600';
+                    errorDiv.innerHTML = `<p class="inline-block bg-gray-200 p-2 rounded-lg">Error: ${data.message || 'Gagal mendapatkan respons'}</p>`;
+                    chatContainer.appendChild(errorDiv);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+            } catch (err) {
+                // Display connection error
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'mb-2 text-left text-red-600';
+                errorDiv.innerHTML = `<p class="inline-block bg-gray-200 p-2 rounded-lg">Error: Koneksi gagal</p>`;
+                chatContainer.appendChild(errorDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>
