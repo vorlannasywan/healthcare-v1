@@ -22,9 +22,6 @@ const db = mysql.createConnection({
     password: process.env.DB_PASS,
     database: process.env.DB_NAME
 });
-const cookieParser = require('cookie-parser');
-app.use(cookieParser());
-
 
 db.connect(err => {
     if (err) {
@@ -43,16 +40,21 @@ const upload = multer({ storage });
 
 // Middleware Auth JWT
 const authMiddleware = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1] || req.cookies.token;
-    if (!token) return res.status(401).json({ message: 'Unauthorized' });
-
+    const token = req.headers.authorization?.split(' ')[1];
+    console.log('Auth Middleware - Received Authorization Header:', req.headers.authorization);
+    if (!token) {
+        console.log('Auth Middleware - No token provided');
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ message: 'Forbidden' });
+        if (err) {
+            console.log('Auth Middleware - Token verification failed:', err.message);
+            return res.status(403).json({ message: 'Forbidden' });
+        }
         req.user = user;
         next();
     });
 };
-
 
 // Middleware Admin Only
 const adminMiddleware = (req, res, next) => {
@@ -170,6 +172,7 @@ app.post('/login', (req, res) => {
 
 // Login Admin
 app.post('/admin/login', (req, res) => {
+    console.log('Admin login request body:', req.body);
     const { email, password } = req.body;
     if (!email || !password) {
         return res.status(400).json({ message: 'Email dan password diperlukan' });
@@ -180,6 +183,7 @@ app.post('/admin/login', (req, res) => {
             console.error('Database error:', err);
             return res.status(500).json({ message: 'Server error' });
         }
+        console.log('Query results:', results);
         if (results.length === 0) {
             return res.status(401).json({ message: 'Invalid admin credentials' });
         }
@@ -189,19 +193,10 @@ app.post('/admin/login', (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
         
-        const token = jwt.sign({ id: admin.id, role: admin.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-        // Simpan token di cookie HttpOnly
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: false, // ubah ke true jika pakai HTTPS
-            maxAge: 3600000 // 1 jam
-        });
-
-        res.json({ success: true });
+        const token = jwt.sign({ id: admin.id, role: admin.role }, process.env.JWT_SECRET);
+        res.json({ token });
     });
 });
-
 
 // Dashboard User
 app.get('/user/dashboard', authMiddleware, (req, res) => {
@@ -231,54 +226,50 @@ app.post('/favorite/:articleId', authMiddleware, (req, res) => {
     });
 });
 
-// Chatbot API
-app.post('/chat', authMiddleware, async (req, res) => {
+// Chatbot API dengan RAG (Tanpa Autentikasi)
+app.post('/chat', async (req, res) => {
     const { message } = req.body;
-    if (!message) {
-        return res.status(400).json({ message: 'Message required' });
-    }
-
+    if (!message) return res.status(400).json({ message: 'Message required' });
+    
     try {
-        db.query(
-            'SELECT * FROM articles WHERE content LIKE ? OR title LIKE ?',
-            [`%${message}%`, `%${message}%`],
-            async (err, articles) => {
-                if (err) {
-                    console.error('Error searching articles:', err);
-                    return res.status(500).json({ message: 'Server error' });
-                }
-
-                let prompt = message;
-                if (articles.length > 0) {
-                    prompt += `\nArahkan ke artikel terkait: ${articles[0].title} di /article/${articles[0].id}`;
-                }
-
-                const responseAI = await client.chat.completions.create({
-                    model: "openai/gpt-oss-120b:fireworks-ai",
-                    messages: [{ role: "user", content: prompt }],
-                });
-
-                const aiReply = responseAI.choices[0].message.content;
-
-                if (req.user) {
-                    db.query(
-                        'INSERT INTO chat_history (user_id, message, response) VALUES (?, ?, ?)',
-                        [req.user.id, message, aiReply],
-                        (err) => {
-                            if (err) console.error('Error saving chat history:', err);
-                        }
-                    );
-                }
-
-                res.json({ reply: aiReply });
+        // Step 1: Retrieval - Cari artikel relevan dari database (knowledge base)
+        db.query('SELECT title, content, article_references FROM articles WHERE content LIKE ? OR title LIKE ? LIMIT 3', 
+            [`%${message}%`, `%${message}%`], async (err, articles) => {
+            if (err) {
+                console.error('Error searching articles for RAG:', err);
+                return res.status(500).json({ message: 'Server error' });
             }
-        );
+
+            // Step 2: Deteksi relevansi - Jika tidak ada artikel ditemukan, anggap di luar topik kesehatan
+            if (articles.length === 0) {
+                const aiReply = 'Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan.';
+                return res.json({ reply: aiReply });
+            }
+
+            // Step 3: Augmentation - Kumpulkan konteks dari artikel yang ditemukan
+            let context = '';
+            articles.forEach((art) => {
+                context += `Artikel: ${art.title}\nIsi: ${art.content}\nReferensi: ${art.article_references}\n\n`;
+            });
+
+            // Step 4: Prompt AI dengan konteks RAG dan instruksi pembatasan
+            const prompt = `Anda adalah chatbot spesialis kesehatan. Jawab pertanyaan berikut hanya berdasarkan konteks kesehatan yang diberikan. Jika pertanyaan di luar kesehatan atau tidak relevan dengan konteks, jawab: "Maaf, saya hanya bisa menjawab pertanyaan tentang kesehatan." Konteks: \n${context}\nPertanyaan: ${message}`;
+
+            // Step 5: Generation - Kirim ke model AI Hugging Face
+            const responseAI = await client.chat.completions.create({
+                model: "openai/gpt-oss-120b:fireworks-ai",
+                messages: [{ role: "user", content: prompt }],
+            });
+
+            const aiReply = responseAI.choices[0].message.content;
+
+            res.json({ reply: aiReply });
+        });
     } catch (err) {
         console.error('AI Error:', err);
         res.status(500).json({ message: 'AI Error' });
     }
 });
-
 
 // Dashboard Admin
 app.get('/admin/dashboard', authMiddleware, adminMiddleware, (req, res) => {
